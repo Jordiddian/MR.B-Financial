@@ -18,7 +18,7 @@ export default function LoginPage() {
       options: { emailRedirectTo: `${location.origin}/auth/callback` },
     })
     if (error) {
-      setError('Something went wrong. Check your email address and try again.')
+      setError(error.message)
     } else {
       setSent(true)
     }
