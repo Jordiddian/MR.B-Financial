@@ -48,6 +48,7 @@ const STATUS_TONE: Record<string, 'green' | 'blue' | 'amber' | 'red' | 'neutral'
   held_for_review: 'amber',
   skipped: 'neutral',
   failed: 'red',
+  rejected: 'red',
 }
 
 function fmtDate(iso: string) {

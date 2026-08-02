@@ -40,6 +40,7 @@ const STATUS_TONE: Record<string, 'green' | 'blue' | 'amber' | 'red' | 'neutral'
   held_for_review: 'amber',
   skipped: 'neutral',
   failed: 'red',
+  rejected: 'red',
 }
 
 function timeAgo(iso: string | null): string {

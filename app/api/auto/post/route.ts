@@ -6,6 +6,7 @@ import { generateAd } from '@/lib/ads/creative'
 import { publishPostToMeta } from '@/lib/ads/social'
 import { AUTO_POST_ROTATION_TYPES } from '@/lib/optimizer/config'
 import { assignVariants, recordAssignment } from '@/lib/experiments/growthbook'
+import { sendTelegramApproval, sendTelegramNotice, sendTelegramFailure } from '@/lib/notifications/telegram'
 
 export const maxDuration = 60
 
@@ -23,12 +24,17 @@ const supabase = createClient(
 // equal turns.
 //
 // Compliance carve-out: if the AI flags a draft as requires_human_review for
-// any reason, auto mode does NOT post it. It stays pending in Approvals and a
-// human decides. This is what actually protects Medicare specifically — CMS
-// rules mean every Medicare post gets this flag, so on Medicare's turn in the
-// rotation it always generates and lands in Approvals rather than posting
-// itself. The rotation still advances so one flagged draft can't jam the
-// schedule.
+// any reason, auto mode does NOT post it. It stays pending in Approvals AND
+// gets sent to Telegram as an approval request with the photo and caption —
+// nothing publishes until Jordan replies YES (handled by
+// app/api/telegram/webhook). Reply NO and it's rejected instead. This is
+// what actually protects Medicare specifically — CMS rules mean every
+// Medicare post gets this flag, so on Medicare's turn in the rotation it
+// always waits for a human regardless of what auto mode would otherwise do.
+// Everything else still auto-publishes on schedule exactly as before —
+// Telegram just sends an FYI with the photo and caption after it's already
+// live, with no gating power. The rotation always advances so one held
+// draft can't jam the schedule.
 
 async function runAutoPost(authHeader: string | null) {
   const isCron = isCronRequest(authHeader)
@@ -100,19 +106,32 @@ async function runAutoPost(authHeader: string | null) {
     }
 
     if (draft.requires_human_review) {
+      const telegramMessageId = await sendTelegramApproval({
+        ad_type: adType,
+        headline: draft.headline,
+        body_copy: draft.body_copy,
+        image_url: ad.image_url as string | null,
+        post_hashtags: draft.post_hashtags ? draft.post_hashtags.join(' ') : null,
+      })
+      if (telegramMessageId) {
+        await supabase.from('ads').update({ telegram_message_id: telegramMessageId }).eq('id', adId)
+      }
+
       await supabase.from('auto_action_log').insert({
         kind: 'post', ad_type: adType, ad_id: adId,
         status: 'held_for_review',
-        reason: 'AI flagged this post as requiring human review — left pending in Approvals.',
+        reason: telegramMessageId
+          ? 'AI flagged this post as requiring human review — sent to Telegram for a yes/no, also waiting in Approvals.'
+          : 'AI flagged this post as requiring human review — left pending in Approvals (Telegram send failed or is not configured).',
       })
       return NextResponse.json({
         ran: true, ad_type: adType, ad_id: adId,
         status: 'held_for_review',
-        note: 'Generated but held for manual review — check Approvals.',
+        note: 'Generated but held for manual review — check Telegram or Approvals.',
       })
     }
 
-    // Auto-approve, then post.
+    // Auto-approve, then post — no gate for anything but requires_human_review content.
     await supabase.from('ads').update({ status: 'approved' }).eq('id', adId)
     const result = await publishPostToMeta(adId, 'both')
 
@@ -121,6 +140,7 @@ async function runAutoPost(authHeader: string | null) {
         kind: 'post', ad_type: adType, ad_id: adId,
         status: 'failed', reason: result.error,
       })
+      await sendTelegramFailure(adType, result.error)
       return NextResponse.json({ ran: true, ad_type: adType, ad_id: adId, status: 'failed', error: result.error })
     }
 
@@ -128,6 +148,14 @@ async function runAutoPost(authHeader: string | null) {
       kind: 'post', ad_type: adType, ad_id: adId,
       status: 'published',
       result: { facebookPostId: result.facebookPostId, instagramMediaId: result.instagramMediaId },
+    })
+
+    await sendTelegramNotice({
+      ad_type: adType,
+      headline: draft.headline,
+      body_copy: draft.body_copy,
+      image_url: ad.image_url as string | null,
+      post_hashtags: draft.post_hashtags ? draft.post_hashtags.join(' ') : null,
     })
 
     return NextResponse.json({
@@ -139,6 +167,7 @@ async function runAutoPost(authHeader: string | null) {
     await supabase.from('auto_action_log').insert({
       kind: 'post', ad_type: adType, status: 'failed', reason: message,
     })
+    await sendTelegramFailure(adType, message)
     return NextResponse.json({ ran: true, ad_type: adType, status: 'failed', error: message }, { status: 502 })
   }
 }
