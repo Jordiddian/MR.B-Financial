@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import { isCronRequest } from '@/lib/auth/cron'
 import { generateAd } from '@/lib/ads/creative'
 import { publishPostToMeta } from '@/lib/ads/social'
-import { AUTO_ELIGIBLE_TYPES } from '@/lib/optimizer/config'
+import { AUTO_POST_ROTATION_TYPES } from '@/lib/optimizer/config'
 import { assignVariants, recordAssignment } from '@/lib/experiments/growthbook'
 
 export const maxDuration = 60
@@ -17,13 +17,18 @@ const supabase = createClient(
 // Fully automatic organic posting: generate → approve → post, no human step.
 // This is Jordan's opening phase — prove the account with a month of organic
 // posts before auto-ads ever touches real spend. Runs on a cadence (default
-// 24h), rotating through AUTO_ELIGIBLE_TYPES so no single product line
-// dominates the feed. Medicare is excluded — see config.ts.
+// 24h), rotating through all five product lines in AUTO_POST_ROTATION_TYPES
+// — Covered California, Medicare, Dental, Vision, Final Expenses, one per
+// cycle, so no single product line dominates the feed and every line gets
+// equal turns.
 //
 // Compliance carve-out: if the AI flags a draft as requires_human_review for
 // any reason, auto mode does NOT post it. It stays pending in Approvals and a
-// human decides. The rotation still advances so one flagged draft can't jam
-// the schedule.
+// human decides. This is what actually protects Medicare specifically — CMS
+// rules mean every Medicare post gets this flag, so on Medicare's turn in the
+// rotation it always generates and lands in Approvals rather than posting
+// itself. The rotation still advances so one flagged draft can't jam the
+// schedule.
 
 async function runAutoPost(authHeader: string | null) {
   const isCron = isCronRequest(authHeader)
@@ -55,7 +60,7 @@ async function runAutoPost(authHeader: string | null) {
   }
 
   const rotationIndex = settings.auto_post_rotation_index ?? 0
-  const adType = AUTO_ELIGIBLE_TYPES[rotationIndex % AUTO_ELIGIBLE_TYPES.length]
+  const adType = AUTO_POST_ROTATION_TYPES[rotationIndex % AUTO_POST_ROTATION_TYPES.length]
 
   // Reserve the slot immediately — if generation or posting throws, we still
   // want the schedule to advance rather than retry the same slot forever.

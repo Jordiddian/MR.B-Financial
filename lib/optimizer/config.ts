@@ -15,12 +15,23 @@ export const CPL_TARGETS: Record<string, number> = {
 
 export const AD_TYPES = Object.keys(CPL_TARGETS)
 
-// Medicare is excluded from BOTH auto-post and auto-ads rotation. CMS rules
-// (see the system prompt) require requires_human_review: true on every
-// Medicare ad or post — auto mode would just burn an AI generation on it
-// every time it came up in rotation, then have to hold it for review anyway.
-// Medicare still goes through the normal manual Approvals flow.
+// Auto-ads specifically: which product lines a paid campaign may be
+// auto-launched for. Medicare is excluded here because CMS rules (see the
+// system prompt) require requires_human_review: true on every Medicare ad,
+// and auto-ads activates campaigns immediately with real spend — there's no
+// point computing "does Medicare need a campaign" when the answer can never
+// be "launch it automatically." Medicare campaigns still go through the
+// normal manual Approvals → Push to Meta flow.
 export const AUTO_ELIGIBLE_TYPES = AD_TYPES.filter(t => t !== 'Medicare')
+
+// Auto-post specifically: all five product lines get a turn in rotation,
+// including Medicare. Unlike auto-ads, generating a Medicare post costs
+// nothing risky — the auto-post route's own requires_human_review check
+// (always true for Medicare, per the system prompt) catches it before
+// anything publishes and drops it into Approvals instead. Excluding Medicare
+// from the rotation entirely would mean it never gets a turn at all, which
+// isn't what "rotate through all five" means.
+export const AUTO_POST_ROTATION_TYPES = AD_TYPES
 
 // Guardrails — deliberately conservative. Every one of these exists because
 // violating it either resets Meta's learning phase or trips spend enforcement.

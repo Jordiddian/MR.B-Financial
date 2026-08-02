@@ -157,7 +157,7 @@ export default function AutoModeSection() {
       <div className="pt-1">
         <SettingRow
           title="Auto-Post"
-          description="Generates and publishes an organic post on a schedule — no human step. Medicare is always excluded and goes to manual Approvals instead."
+          description="Rotates through all five product lines, one per cycle. Medicare still gets a turn but always lands in Approvals for a human to review instead of posting itself — CMS requires that regardless."
           control={
             <Toggle
               label="Auto-Post"
