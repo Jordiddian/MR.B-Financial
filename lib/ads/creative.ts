@@ -16,7 +16,12 @@ export const AGENT_INFO = `Bruce Tabibian | Licensed Insurance Agent | CA Licens
 // The one place a URL the whole system points prospects at is fixed. Every ad
 // and post exists to drive a click here — never hardcode this string
 // elsewhere.
-export const LANDING_URL = process.env.LANDING_URL ?? 'https://mrb-site-beta.vercel.app'
+//
+// Deliberately `||`, not `??`: Vercel's production env var was found set to
+// an empty string, not unset — `??` only falls back on null/undefined, so it
+// silently passed the empty string through and every ad and post link went
+// out blank. `||` also falls back on "", closing that failure mode for good.
+export const LANDING_URL = process.env.LANDING_URL || 'https://mrb-site-beta.vercel.app'
 
 export const BACKGROUND_STYLE: Record<string, string> = {
   lifestyle: 'Photorealistic lifestyle photography. Warm natural light, real-life setting. No medical environments, no hospitals, no white coats.',
