@@ -1,68 +1,95 @@
 import { createClient } from '@/lib/supabase/server'
+import { Page, PageHeader, Card, EmptyState, Table, Row, Cell, Badge } from '../ui'
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
 
 export default async function LeadsPage() {
   const supabase = await createClient()
-  const { data: leads } = await supabase
-    .from('leads')
-    .select('id, name, phone, interests, source, created_at')
-    .order('created_at', { ascending: false })
-    .limit(500)
 
-  const count = leads?.length ?? 0
+  // The 7-day count is done by the database rather than filtered in JS, so the
+  // page doesn't have to hold every row in memory to produce it.
+  //
+  // react-hooks/purity flags Date.now() because an impure read during render is
+  // unstable across re-renders — but this is an async Server Component, which
+  // renders exactly once per request and never re-renders. Reading the clock
+  // here is the intended behaviour: each request gets its own 7-day window.
+  // eslint-disable-next-line react-hooks/purity
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString()
+
+  const [{ data: leads }, { count: recentCount }] = await Promise.all([
+    supabase
+      .from('leads')
+      .select('id, name, phone, interests, source, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabase
+      .from('leads')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', weekAgo),
+  ])
+
+  const rows = leads ?? []
+  const count = rows.length
+  const recent = recentCount ?? 0
 
   return (
-    <div className="p-8">
-      <h1 className="text-white text-2xl font-semibold mb-1">Leads</h1>
-      <p className="text-gray-400 text-sm mb-8">
-        {count} total — everyone who submitted the quote form
-      </p>
+    <Page>
+      <PageHeader
+        title="Leads"
+        subtitle={
+          count === 0
+            ? 'Everyone who submits the quote form lands here'
+            : `${count} total · ${recent} in the last 7 days`
+        }
+      />
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-800">
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Name</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Phone</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Interested in</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {count === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-gray-500">
-                  No leads yet. They&apos;ll appear here once the form is live.
-                </td>
-              </tr>
-            ) : (
-              leads!.map((lead, i) => (
-                <tr
-                  key={lead.id}
-                  className={i < count - 1 ? 'border-b border-gray-800' : ''}
-                >
-                  <td className="px-5 py-3 text-white font-medium">{lead.name}</td>
-                  <td className="px-5 py-3 text-gray-300">
-                    <a
-                      href={`tel:${lead.phone.replace(/\D/g, '')}`}
-                      className="hover:text-blue-400 transition-colors"
-                    >
-                      {lead.phone}
-                    </a>
-                  </td>
-                  <td className="px-5 py-3 text-gray-300">{lead.interests || '—'}</td>
-                  <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
-                    {new Date(lead.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Card padded={false}>
+        {count === 0 ? (
+          <EmptyState
+            title="No leads yet"
+            hint="They'll appear here the moment someone submits the quote form on the landing page."
+          />
+        ) : (
+          <Table
+            columns={[
+              { label: 'Name' },
+              { label: 'Phone' },
+              { label: 'Interested in' },
+              { label: 'Source' },
+              { label: 'Date', align: 'right' },
+            ]}
+          >
+            {rows.map(lead => (
+              <Row key={lead.id}>
+                <Cell strong>{lead.name}</Cell>
+                <Cell>
+                  <a
+                    href={`tel:${lead.phone.replace(/\D/g, '')}`}
+                    className="hover:text-blue-400 transition-colors"
+                  >
+                    {lead.phone}
+                  </a>
+                </Cell>
+                <Cell>{lead.interests || '—'}</Cell>
+                <Cell>
+                  <Badge tone={lead.source === 'website_form' ? 'blue' : 'neutral'}>
+                    {lead.source === 'website_form' ? 'Website' : lead.source || 'unknown'}
+                  </Badge>
+                </Cell>
+                <Cell align="right" muted nowrap>
+                  {fmtDate(lead.created_at)}
+                </Cell>
+              </Row>
+            ))}
+          </Table>
+        )}
+      </Card>
+    </Page>
   )
 }

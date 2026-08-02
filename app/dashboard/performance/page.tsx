@@ -1,38 +1,122 @@
-export default function PerformancePage() {
-  const adTypes = ['Covered California', 'Medicare', 'Dental', 'Vision', 'Final Expenses']
+import { createClient } from '@/lib/supabase/server'
+import SyncButton from './SyncButton'
+import { CPL_TARGETS, AD_TYPES } from '@/lib/optimizer/config'
+import {
+  Page, PageHeader, Card, Table, Row, Cell, ScoreText, money, cplTone, Badge,
+} from '../ui'
+
+interface PerfRow {
+  ad_type: string
+  impressions: number
+  clicks: number
+  spend: number
+  leads: number
+  cost_per_lead: number | null
+  ai_score: number | null
+  recorded_at: string
+}
+
+const CPL_TEXT: Record<string, string> = {
+  green: 'text-green-400',
+  amber: 'text-yellow-400',
+  red: 'text-red-400',
+  neutral: 'text-gray-500',
+}
+
+export default async function PerformancePage() {
+  const supabase = await createClient()
+
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+
+  // Snapshots are append-only; take the most recent snapshot per ad type this month.
+  const { data } = await supabase
+    .from('ad_performance')
+    .select('ad_type, impressions, clicks, spend, leads, cost_per_lead, ai_score, recorded_at')
+    .gte('recorded_at', startOfMonth)
+    .order('recorded_at', { ascending: false })
+
+  const latest: Record<string, PerfRow> = {}
+  for (const row of (data ?? []) as PerfRow[]) {
+    if (!latest[row.ad_type]) latest[row.ad_type] = row
+  }
+
+  const hasData = Object.keys(latest).length > 0
+  const lastSync = hasData
+    ? Object.values(latest).reduce(
+        (max, r) => (r.recorded_at > max ? r.recorded_at : max),
+        Object.values(latest)[0].recorded_at
+      )
+    : null
 
   return (
-    <div className="p-8">
-      <h1 className="text-white text-2xl font-semibold mb-1">Performance</h1>
-      <p className="text-gray-400 text-sm mb-8">How each ad type is performing</p>
+    <Page>
+      <PageHeader
+        title="Performance"
+        subtitle={
+          lastSync
+            ? `Last synced ${new Date(lastSync).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+            : 'How each product line is performing this month'
+        }
+        actions={<SyncButton />}
+      />
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-800">
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Ad type</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Impressions</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Clicks</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Spend</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Leads</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">Cost / lead</th>
-              <th className="text-left text-gray-400 font-medium px-5 py-3">AI score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {adTypes.map((type, i) => (
-              <tr key={type} className={i < adTypes.length - 1 ? 'border-b border-gray-800' : ''}>
-                <td className="px-5 py-3 text-white font-medium">{type}</td>
-                {['—', '—', '—', '—', '—', '—'].map((v, j) => (
-                  <td key={j} className="px-5 py-3 text-gray-500">{v}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Card padded={false}>
+        <Table
+          columns={[
+            { label: 'Ad type' },
+            { label: 'Impressions', align: 'right' },
+            { label: 'Clicks', align: 'right' },
+            { label: 'CTR', align: 'right' },
+            { label: 'Spend', align: 'right' },
+            { label: 'Leads', align: 'right' },
+            { label: 'Cost / lead', align: 'right' },
+            { label: 'AI score', align: 'right' },
+          ]}
+        >
+          {AD_TYPES.map(type => {
+            const row = latest[type]
+            const target = CPL_TARGETS[type] ?? null
+            const cpl = row?.cost_per_lead ?? (row && row.leads > 0 ? row.spend / row.leads : null)
+            const ctr = row && row.impressions > 0 ? (row.clicks / row.impressions) * 100 : null
+            const tone = cplTone(cpl == null ? null : Number(cpl), target)
 
-      <p className="text-gray-600 text-xs mt-4">Data populates once Meta ads are connected and running.</p>
-    </div>
+            return (
+              <Row key={type}>
+                <Cell strong nowrap>
+                  {type}
+                  {target != null && (
+                    <span className="text-gray-600 text-xs ml-2 font-normal">target {money(target)}</span>
+                  )}
+                </Cell>
+                <Cell align="right">{row ? row.impressions.toLocaleString() : '—'}</Cell>
+                <Cell align="right">{row ? row.clicks.toLocaleString() : '—'}</Cell>
+                <Cell align="right" muted={!ctr}>
+                  {ctr != null ? `${ctr.toFixed(2)}%` : '—'}
+                </Cell>
+                <Cell align="right">{row ? money(row.spend) : '—'}</Cell>
+                <Cell align="right">{row ? row.leads : '—'}</Cell>
+                <Cell align="right">
+                  <span className={`font-medium ${CPL_TEXT[tone]}`}>{money(cpl)}</span>
+                </Cell>
+                <Cell align="right">
+                  <ScoreText score={row?.ai_score} />
+                </Cell>
+              </Row>
+            )
+          })}
+        </Table>
+      </Card>
+
+      {!hasData && (
+        <div className="mt-4 flex items-start gap-2">
+          <Badge tone="neutral">No data</Badge>
+          <p className="text-gray-500 text-xs leading-relaxed max-w-xl">
+            Meta only returns figures once campaigns are actually running. Hit &quot;Sync now&quot; to
+            pull the latest — the daily cron does this automatically at 8am PT.
+          </p>
+        </div>
+      )}
+    </Page>
   )
 }
