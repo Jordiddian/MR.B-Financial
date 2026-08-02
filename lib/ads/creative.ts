@@ -11,7 +11,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export const AGENT_INFO = `Bruce Tabibian | Licensed Insurance Agent | CA License: OH92156 | (818) 276-6767 TTY 711 | Brucet525@gmail.com`
+export const AGENT_INFO = `Bruce Tabibian | Licensed Insurance Agent | CA License: OH92156 | (818) 276-6767 TTY 711 | brucetabibian@gmail.com`
 
 // The one place a URL the whole system points prospects at is fixed. Every ad
 // and post exists to drive a click here — never hardcode this string
