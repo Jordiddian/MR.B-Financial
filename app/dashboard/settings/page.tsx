@@ -6,8 +6,17 @@ import {
 import { planBudget } from '@/lib/optimizer/budget'
 import AutoModeSection from './AutoModeSection'
 
-const IMAGE_COST = 0.04  // gpt-image-1 at 1024×1024
-const COPY_COST  = 0.01  // gpt-4o-mini per completion
+// Estimates only — the real per-generation cost is computed from each
+// OpenAI response's actual token usage (lib/optimizer/openai-pricing.ts) and
+// that exact figure is what's logged and counted against the monthly cap.
+// These two numbers are for this preview only, and were wrong for months:
+// gpt-image-1's quality defaults to "auto" with no quality param set, which
+// resolves to "high" ($0.167/image) for prompts this detailed, not the
+// ~$0.04 assumed here; the copy call also runs full gpt-4o, not
+// gpt-4o-mini. Real-world confirmation: 7 organic posts cost $1.26 total
+// ($0.18/post), consistent with these corrected figures.
+const IMAGE_COST = 0.167  // gpt-image-1 at 1024×1024, "auto" quality resolving to "high"
+const COPY_COST  = 0.02   // gpt-4o (not mini) per completion, ~3-4k input + up to 800 output tokens
 
 const AUTOMATION = [
   { ok: true,  label: 'Meta Ads API connected', detail: 'account + access token + page' },

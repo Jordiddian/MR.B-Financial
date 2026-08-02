@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { META_ADS_SYSTEM_PROMPT } from '@/lib/ai/system-prompt'
+import { chatCompletionCost, imageGenerationCost } from '@/lib/optimizer/openai-pricing'
 import crypto from 'crypto'
 
 // Single source of truth for how an ad creative gets built. Both the on-demand
@@ -90,8 +91,14 @@ ${fineprint}
 CRITICAL: The final image must look like a polished, ready-to-publish insurance advertisement. Professional typography throughout. All text must be clearly legible. Layout should feel like a real ad, not a photo with captions.`
 }
 
-export async function generateImage(params: AdImagePromptParams): Promise<string | null> {
-  if (!process.env.OPENAI_API_KEY) return null
+export interface ImageGenerationResult {
+  url: string | null
+  /** Real cost from the API's own usage data — 0 if generation never ran. */
+  costDollars: number
+}
+
+export async function generateImage(params: AdImagePromptParams): Promise<ImageGenerationResult> {
+  if (!process.env.OPENAI_API_KEY) return { url: null, costDollars: 0 }
   try {
     const prompt = buildAdImagePrompt(params)
 
@@ -100,22 +107,26 @@ export async function generateImage(params: AdImagePromptParams): Promise<string
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
       body: JSON.stringify({ model: 'gpt-image-1', prompt, n: 1, size: '1024x1024' }),
     })
-    if (!res.ok) return null
+    if (!res.ok) return { url: null, costDollars: 0 }
     const data = await res.json()
+    // Real cost regardless of whether the image itself comes back — a
+    // failed upload shouldn't erase that OpenAI already charged for this.
+    const costDollars = imageGenerationCost(data.usage)
+
     const b64 = data.data?.[0]?.b64_json
-    if (!b64) return data.data?.[0]?.url ?? null
+    if (!b64) return { url: data.data?.[0]?.url ?? null, costDollars }
 
     const bytes = Buffer.from(b64, 'base64')
     const path = `${crypto.randomUUID()}.png`
     const { error } = await supabase.storage
       .from('ad-creatives')
       .upload(path, bytes, { contentType: 'image/png', upsert: false })
-    if (error) return null
+    if (error) return { url: null, costDollars }
 
     const { data: pub } = supabase.storage.from('ad-creatives').getPublicUrl(path)
-    return pub.publicUrl
+    return { url: pub.publicUrl, costDollars }
   } catch {
-    return null
+    return { url: null, costDollars: 0 }
   }
 }
 
@@ -250,6 +261,8 @@ export async function generateAd(opts: GenerateOptions): Promise<GenerateResult>
   if (!aiRes.ok) throw new Error('OpenAI API error')
 
   const aiData = await aiRes.json()
+  const copyCostDollars = chatCompletionCost(aiData.usage)
+
   let parsed: { new_ads: AdDraft[]; compliance_alerts?: string[] }
   try {
     parsed = JSON.parse(aiData.choices[0].message.content)
@@ -260,8 +273,8 @@ export async function generateAd(opts: GenerateOptions): Promise<GenerateResult>
   const draft = parsed.new_ads?.[0]
   if (!draft) throw new Error('AI returned no ad draft')
 
-  const imageUrl = withImage === false
-    ? null
+  const { url: imageUrl, costDollars: imageCostDollars } = withImage === false
+    ? { url: null, costDollars: 0 }
     : await generateImage({
         backgroundScene: draft.image_direction,
         headline: draft.headline,
@@ -298,10 +311,14 @@ export async function generateAd(opts: GenerateOptions): Promise<GenerateResult>
 
   if (error) throw new Error(error.message)
 
+  // Real cost from each API response's own usage data, not a flat guess —
+  // see lib/optimizer/openai-pricing.ts for why the old $0.05 flat rate was
+  // wrong by roughly 3.5x in practice.
+  const totalCostDollars = copyCostDollars + imageCostDollars
   await supabase.from('spending_log').insert({
     category: 'api_costs',
-    amount: imageUrl ? 0.05 : 0.01,
-    description: `Ad generation: ${adType} (${imageStyle} image${imageUrl ? '' : ' skipped'})`,
+    amount: Number(totalCostDollars.toFixed(4)),
+    description: `Ad generation: ${adType} (${imageStyle} image${imageUrl ? '' : ' skipped'}) — copy $${copyCostDollars.toFixed(4)} + image $${imageCostDollars.toFixed(4)}`,
   })
 
   return { ad: data as Record<string, unknown>, draft, imageUrl }
