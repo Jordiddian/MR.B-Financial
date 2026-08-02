@@ -5,7 +5,7 @@ import { isCronRequest } from '@/lib/auth/cron'
 import { generateAd } from '@/lib/ads/creative'
 import { publishAdToMeta } from '@/lib/ads/meta-publish'
 import { planBudget } from '@/lib/optimizer/budget'
-import { AUTO_ELIGIBLE_TYPES } from '@/lib/optimizer/config'
+import { AUTO_ELIGIBLE_TYPES, isInLearningPhase, daysRunning, GUARDRAILS } from '@/lib/optimizer/config'
 import { assignVariants, recordAssignment } from '@/lib/experiments/growthbook'
 
 export const maxDuration = 120
@@ -35,6 +35,17 @@ const supabase = createClient(
 // creating a second for any of them. Once a line has one running, further
 // scaling is the optimizer's job (app/api/meta/optimize), not this route's —
 // this route is for coverage, not scaling.
+//
+// Pacing is self-calibrating, not a fixed clock: rather than "launch the next
+// line every N hours" regardless of how the last one is doing, this checks
+// whether the most recently auto-launched campaign has actually cleared
+// Meta's learning phase (GUARDRAILS.MIN_DAYS_RUNNING days AND
+// MIN_LEADS_FOR_SIGNAL leads — the same signal the daily optimizer uses
+// before it will touch a campaign's budget) before adding another. A slow
+// starter naturally pushes the next launch back; a fast one lets the next
+// line go out sooner. There used to be a user-facing cadence dropdown here —
+// removed, because a blind timer was strictly worse than reading the
+// campaign's own data.
 
 async function runAutoAds(authHeader: string | null) {
   const isCron = isCronRequest(authHeader)
@@ -46,7 +57,7 @@ async function runAutoAds(authHeader: string | null) {
 
   const { data: settings } = await supabase
     .from('budget_settings')
-    .select('auto_ads_enabled, auto_ads_cadence_hours, last_auto_ads_at, auto_ads_rotation_index, monthly_cap')
+    .select('auto_ads_enabled, auto_ads_rotation_index, monthly_cap')
     .eq('id', 1)
     .single()
 
@@ -54,14 +65,30 @@ async function runAutoAds(authHeader: string | null) {
     return NextResponse.json({ ran: false, note: 'Auto-ads is disabled — turn it on in Settings when you\'re ready to move past organic posting.' })
   }
 
-  const cadenceHours = settings.auto_ads_cadence_hours ?? 168
-  if (settings.last_auto_ads_at) {
-    const elapsedHours = (Date.now() - new Date(settings.last_auto_ads_at).getTime()) / 3_600_000
-    if (elapsedHours < cadenceHours) {
-      return NextResponse.json({
-        ran: false,
-        note: `Last auto-ads run was ${elapsedHours.toFixed(1)}h ago — next one due at ${cadenceHours}h.`,
-      })
+  // Self-calibrated pacing: don't add another line while the most recently
+  // auto-launched one is still proving itself.
+  const { data: autoAdsAds } = await supabase.from('ads').select('id').eq('generated_by', 'auto_ads')
+  const autoAdsAdIds = (autoAdsAds ?? []).map(a => a.id)
+
+  if (autoAdsAdIds.length > 0) {
+    const { data: recentCampaigns } = await supabase
+      .from('campaigns')
+      .select('ad_type, started_at, paused_at, total_leads, status')
+      .in('ad_id', autoAdsAdIds)
+      .eq('status', 'active')
+      .order('started_at', { ascending: false })
+      .limit(1)
+
+    const mostRecent = recentCampaigns?.[0]
+    if (mostRecent && isInLearningPhase(mostRecent)) {
+      const days = daysRunning(mostRecent)
+      const leads = mostRecent.total_leads ?? 0
+      const note =
+        `Waiting for ${mostRecent.ad_type}'s campaign to clear learning phase before launching another ` +
+        `(${days}d of ${GUARDRAILS.MIN_DAYS_RUNNING} minimum, ${leads} of ${GUARDRAILS.MIN_LEADS_FOR_SIGNAL} leads).`
+      await supabase.from('budget_settings').update({ last_auto_ads_at: new Date().toISOString() }).eq('id', 1)
+      await supabase.from('auto_action_log').insert({ kind: 'ad', ad_type: 'n/a', status: 'skipped', reason: note })
+      return NextResponse.json({ ran: true, status: 'skipped', reason: note })
     }
   }
 

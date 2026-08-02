@@ -15,7 +15,6 @@ interface AutoSettings {
   auto_post_cadence_hours: number
   last_auto_post_at: string | null
   auto_ads_enabled: boolean
-  auto_ads_cadence_hours: number
   last_auto_ads_at: string | null
 }
 
@@ -69,7 +68,6 @@ export default function AutoModeSection() {
         auto_post_cadence_hours: s.auto_post_cadence_hours ?? 24,
         last_auto_post_at: s.last_auto_post_at ?? null,
         auto_ads_enabled: s.auto_ads_enabled ?? false,
-        auto_ads_cadence_hours: s.auto_ads_cadence_hours ?? 168,
         last_auto_ads_at: s.last_auto_ads_at ?? null,
       })
       setLog(Array.isArray(l) ? l : [])
@@ -104,13 +102,13 @@ export default function AutoModeSection() {
     setToggling(null)
   }
 
-  async function setCadence(kind: 'post' | 'ads', hours: number) {
+  // Auto-Ads has no user-facing cadence — see the route's own header comment
+  // for why a fixed timer was removed in favor of reading the most recent
+  // campaign's actual learning-phase status.
+  async function setPostCadence(hours: number) {
     if (!settings) return
-    setSettings({
-      ...settings,
-      [kind === 'post' ? 'auto_post_cadence_hours' : 'auto_ads_cadence_hours']: hours,
-    })
-    await patch(kind === 'post' ? 'auto_post_cadence_hours' : 'auto_ads_cadence_hours', hours)
+    setSettings({ ...settings, auto_post_cadence_hours: hours })
+    await patch('auto_post_cadence_hours', hours)
   }
 
   // Same double-click hazard as the Approvals Generate button — a ref closes
@@ -174,7 +172,7 @@ export default function AutoModeSection() {
             {CADENCE_OPTIONS.map(opt => (
               <button
                 key={opt.hours}
-                onClick={() => setCadence('post', opt.hours)}
+                onClick={() => setPostCadence(opt.hours)}
                 className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
                   settings.auto_post_cadence_hours === opt.hours
                     ? 'bg-purple-900 text-purple-300'
@@ -214,24 +212,15 @@ export default function AutoModeSection() {
             without anyone reviewing them first.
           </p>
         )}
-        <div className="flex items-center justify-between mt-2.5">
-          <div className="flex items-center gap-1.5">
-            {CADENCE_OPTIONS.map(opt => (
-              <button
-                key={opt.hours}
-                onClick={() => setCadence('ads', opt.hours)}
-                className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
-                  settings.auto_ads_cadence_hours === opt.hours
-                    ? 'bg-blue-900 text-blue-300'
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+        <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+          No cadence to set — it self-paces. One product line launches at a time; the next one
+          waits until the last one clears Meta&apos;s learning phase (7+ days running and 50+ leads)
+          before going out. Once every eligible line has a campaign, this stops launching new ones
+          entirely — scaling winners from there is the daily optimizer&apos;s job.
+        </p>
+        <div className="flex items-center justify-end mt-2.5">
           <div className="flex items-center gap-2">
-            <span className="text-gray-600 text-xs">Last: {timeAgo(settings.last_auto_ads_at)}</span>
+            <span className="text-gray-600 text-xs">Last checked: {timeAgo(settings.last_auto_ads_at)}</span>
             <Button onClick={() => runNow('ads')} disabled={running !== null} variant="primary">
               {running === 'ads' ? 'Running…' : 'Run now'}
             </Button>
