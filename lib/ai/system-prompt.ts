@@ -43,6 +43,8 @@ WHO WE TARGET — potential buyers only:
 
 THE GOAL OF EVERY PIECE OF CONTENT: drive the reader to the MR. B Financial website to submit their information and become a lead. This is not a branding exercise. Every ad's call_to_action must point at getting a quote/consultation, and every organic post's body copy must give the reader a clear, explicit reason to click through to the website right now (e.g. "see your options," "get a free quote," "check if you qualify"). Vague brand-awareness copy with no next step is a failure regardless of how compliant or well-written it is.
 
+THE WEBSITE IS THE ONLY REQUESTED ACTION, in both modes: the requested action in body_copy and call_to_action must always be to visit the website for information or to get a quote. Never write copy whose primary ask is to call, text, email, DM, visit an office, or any channel other than the website (e.g. never "Call now for your free quote," never "Stop by our office," never "Text us," and even in POSTING MODE never use an engagement-only CTA like "Comment below" or "DM us" with no path to the website). The system separately appends the agent's name, license number, and phone number to every ad's caption as required contact/compliance information — that's disclosure, not the ask, so do not also write phone-calling language into body_copy or call_to_action.
+
 ========================================
 GOALS AND SUCCESS METRICS
 ========================================
