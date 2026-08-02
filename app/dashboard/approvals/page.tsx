@@ -5,6 +5,7 @@ import {
   Page, PageHeader, Card, CardHeader, Button, Badge, EmptyState, Loading,
   ErrorNote, ExpandableThumbnail, Lightbox, type Tone,
 } from '../ui'
+import { PUBLIC_LANDING_URL } from '@/lib/config/public'
 
 const AD_TYPES = ['Covered California', 'Medicare', 'Dental', 'Vision', 'Final Expenses']
 
@@ -168,8 +169,14 @@ export default function ApprovalsPage() {
   }
 
   async function copyPost(ad: Ad) {
-    const text = [ad.headline, '', ad.body_copy, '', ad.post_hashtags]
-      .filter(x => x != null).join('\n')
+    // Mirrors lib/ads/social.ts's buildPostText exactly — the actual post
+    // includes a website link the AI never writes into body_copy itself; it
+    // gets appended at publish time. Copy has to match what really goes out.
+    const text = [
+      ad.headline, '', ad.body_copy, '',
+      `Get your free quote: ${PUBLIC_LANDING_URL}`, '',
+      ad.post_hashtags,
+    ].filter(x => x != null).join('\n')
     try {
       await navigator.clipboard.writeText(text)
       setNotice({ id: ad.id, ok: true, text: 'Post copied to clipboard.' })
@@ -343,6 +350,11 @@ export default function ApprovalsPage() {
                     </div>
                     <p className="text-white text-sm font-semibold mb-1">{ad.headline}</p>
                     <p className="text-gray-400 text-xs leading-relaxed">{ad.body_copy}</p>
+                    {ad.is_organic_post && (
+                      <p className="text-blue-400 text-xs mt-1.5" title="Appended automatically when this posts — not part of the AI-written copy above">
+                        + Get your free quote: {PUBLIC_LANDING_URL}
+                      </p>
+                    )}
                     {ad.post_hashtags && (
                       <p className="text-purple-400 text-xs mt-2 leading-relaxed">{ad.post_hashtags}</p>
                     )}
