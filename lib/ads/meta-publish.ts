@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { planBudget, type BudgetPlan } from '@/lib/optimizer/budget'
-import { LANDING_URL } from '@/lib/ads/creative'
+import { AGENT_INFO, LANDING_URL } from '@/lib/ads/creative'
 
 // Single source of truth for pushing an approved ad to Meta as a real
 // campaign/adset/creative/ad. Both the manual "Push to Meta" button
@@ -122,12 +122,22 @@ export async function publishAdToMeta(
     const imageHash = await uploadImage(accountId, token, ad.image_url)
     if (!imageHash) return { success: false, error: 'Failed to register creative image with Meta' }
 
+    // The `link` field only controls the click-through destination — Meta
+    // doesn't render it as visible text, and the AI's body_copy alone never
+    // guaranteed a phone number either. Both are appended in code so every
+    // ad's caption always has them, regardless of what the model wrote. This
+    // also satisfies the system prompt's own requirement that every life/
+    // health ad carry the agent name, license number, and phone number.
+    const caption = [ad.body_copy, '', AGENT_INFO, '', `Get your free quote: ${LANDING_URL}`]
+      .join('\n')
+      .trim()
+
     const creative = await metaPost(`${accountId}/adcreatives`, {
       name: `MRB ${ad.ad_type} creative`,
       object_story_spec: JSON.stringify({
         page_id: pageId,
         link_data: {
-          message: ad.body_copy,
+          message: caption,
           link: LANDING_URL,
           name: ad.headline,
           image_hash: imageHash,
