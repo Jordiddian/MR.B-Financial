@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   Page, PageHeader, Card, CardHeader, Button, Badge, EmptyState, Loading,
-  ErrorNote, type Tone,
+  ErrorNote, ExpandableThumbnail, Lightbox, type Tone,
 } from '../ui'
 
 const AD_TYPES = ['Covered California', 'Medicare', 'Dental', 'Vision', 'Final Expenses']
@@ -57,6 +57,11 @@ export default function ApprovalsPage() {
   // Per-ad inline feedback, keyed by ad id — replaces the browser alert()s,
   // which fired outside the page and lost the context of which ad failed.
   const [notice, setNotice] = useState<{ id: string; text: string; ok: boolean } | null>(null)
+
+  // Generated creative is 1024×1024 with headline/body/CTA text baked into
+  // the image — unreadable at thumbnail size, which is exactly what needs
+  // checking before approving. Lightbox state is just the URL to show.
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   // Both fetches set state only from their promise callbacks — a synchronous
   // setState inside the effect would cascade renders.
@@ -312,11 +317,10 @@ export default function ApprovalsPage() {
               <li key={ad.id} className="px-5 py-4">
                 <div className="flex items-start gap-4">
                   {ad.image_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <ExpandableThumbnail
                       src={ad.image_url}
                       alt={`Creative for ${ad.ad_type}`}
-                      className="w-20 h-20 rounded-lg object-cover flex-shrink-0 border border-gray-800"
+                      onExpand={() => setLightboxSrc(ad.image_url)}
                     />
                   )}
                   <div className="flex-1 min-w-0">
@@ -430,6 +434,12 @@ export default function ApprovalsPage() {
           </ul>
         </Card>
       )}
+
+      <Lightbox
+        src={lightboxSrc}
+        alt="Ad creative, fullscreen"
+        onClose={() => setLightboxSrc(null)}
+      />
     </Page>
   )
 }

@@ -1,4 +1,5 @@
 'use client'
+import { useEffect } from 'react'
 import { motion } from 'motion/react'
 
 // Shared primitives for the portal. Every page composes from these so spacing,
@@ -352,4 +353,117 @@ export function ScoreText({ score }: { score: number | null | undefined }) {
     : tone === 'red' ? 'text-red-400'
     : 'text-gray-500'
   return <span className={`font-semibold tabular-nums ${color}`}>{score ?? '—'}</span>
+}
+
+/* ── Image lightbox ─────────────────────────────────────── */
+
+/**
+ * Small expand-arrows glyph, overlaid on a thumbnail to open it fullscreen.
+ * No icon library is installed — this one SVG covers the need without adding one.
+ */
+function ExpandIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+      <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
+ * Overlays an expand button on a thumbnail; clicking either the button or the
+ * thumbnail itself opens the image fullscreen via `onExpand`. Generated ad
+ * creatives get rendered at 1024×1024 with headline/body/CTA text baked in —
+ * that detail is unreadable at thumbnail size, which is the whole reason to
+ * check the image before approving it.
+ */
+export function ExpandableThumbnail({
+  src,
+  alt,
+  onExpand,
+  className = 'w-20 h-20',
+}: {
+  src: string
+  alt: string
+  onExpand: () => void
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      className={`group relative flex-shrink-0 rounded-lg overflow-hidden border border-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${className}`}
+      title="View fullscreen"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} className="w-full h-full object-cover" />
+      <span className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+        <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity">
+          <ExpandIcon />
+        </span>
+      </span>
+    </button>
+  )
+}
+
+/**
+ * Fullscreen image viewer — closes on backdrop click, the close button, or
+ * Escape.
+ *
+ * Deliberately no exit animation / AnimatePresence here. Reproduced and
+ * confirmed: AnimatePresence in this stack (motion 12 + React 19 + Next 16)
+ * does not reliably unmount an exiting child when the presence condition is
+ * a prop owned by a parent component rather than local state in the same
+ * component that renders <AnimatePresence> — React commits the state change
+ * correctly, but the exiting element is left stuck in the DOM forever, so
+ * the modal could open but never close. That's exactly this component's
+ * shape (Lightbox is a shared component; every caller owns `src` in its own
+ * state and passes it down). Plain conditional rendering has no such
+ * failure mode and a fullscreen image viewer doesn't need a fade to feel
+ * right — instant show/hide is standard for this UI pattern.
+ */
+export function Lightbox({
+  src,
+  alt,
+  onClose,
+}: {
+  src: string | null
+  alt: string
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!src) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [src, onClose])
+
+  if (!src) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-8"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={alt}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      />
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onClose() }}
+        aria-label="Close"
+        className="absolute top-5 right-5 text-white/70 hover:text-white text-3xl leading-none w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+      >
+        ×
+      </button>
+    </div>
+  )
 }
