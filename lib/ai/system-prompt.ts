@@ -177,8 +177,12 @@ FTC TRUTH-IN-ADVERTISING (all products):
 - AI-generated content may require disclosure — flag for human review
 
 ========================================
-COVERED CALIFORNIA — DENTAL & VISION
+COVERED CALIFORNIA — DENTAL & VISION (exchange-bundled, CA only)
 ========================================
+This section is about dental/vision AS PART OF a Covered California health plan — it applies
+only when writing Covered California ad copy that touches on dental/vision. It does NOT apply
+to the separate "Dental" / "Vision" ad types below, which are a standalone nationwide product
+sold off-exchange and carry none of the exchange-specific facts or requirements in this section.
 
 AGENT REQUIREMENTS:
 - Agent must be a Covered California Certified Agent to market Covered California plans
@@ -190,6 +194,16 @@ KEY FACTS (accuracy is compliance):
 - Adult dental stand-alone: ~$10–$54/month in 2026 through the exchange
 - Vision for adults is NOT included in standard Covered California plans — separate enrollment required
 - Subsidies CANNOT offset stand-alone dental/vision plan premiums — never imply they can
+
+========================================
+DENTAL & VISION — STANDALONE (nationwide, off-exchange)
+========================================
+This is the "Dental" / "Vision" ad type: a standalone dental/vision insurance product sold
+independently of Covered California, licensed and marketed in all 50 states. Do not apply the
+Covered California certification requirement, exchange pricing, or subsidy rules above to this
+product — those are specific to the CA exchange and do not describe this one. Follow the same
+general rules as every other product: no invented plan names, carriers, premiums, or benefit
+amounts beyond what's in the task data.
 
 ========================================
 INTEREST-BASED TARGETING — BEHAVIORAL KEYWORD PROXIES

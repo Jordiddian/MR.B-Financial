@@ -13,13 +13,35 @@ const supabase = createClient(
 const GRAPH = 'https://graph.facebook.com/v20.0'
 const PAGE_ID = process.env.META_PAGE_ID
 
-async function getPageToken(userToken: string): Promise<string | null> {
+interface PageTokenResult {
+  token: string | null
+  // The real reason it failed — a fetch/network exception, or Meta's own
+  // error payload. Previously this was swallowed entirely and the caller
+  // always guessed "missing pages_manage_posts scope" regardless of what
+  // actually went wrong (a transient network blip got the same message as a
+  // genuinely revoked token), which made a one-off failure look like a
+  // standing auth problem that needed re-authorization when it didn't.
+  error?: string
+  isAuthError?: boolean
+}
+
+async function getPageToken(userToken: string): Promise<PageTokenResult> {
   try {
     const res = await fetch(`${GRAPH}/${PAGE_ID}?fields=access_token&access_token=${userToken}`)
     const json = await res.json()
-    return json.access_token ?? null
-  } catch {
-    return null
+    if (json.access_token) return { token: json.access_token }
+    const metaError = json.error
+    return {
+      token: null,
+      error: metaError?.message ?? `Meta returned no access_token (HTTP ${res.status})`,
+      isAuthError: metaError?.type === 'OAuthException' || metaError?.code === 190,
+    }
+  } catch (err) {
+    return {
+      token: null,
+      error: err instanceof Error ? err.message : 'Network error reaching Meta',
+      isAuthError: false,
+    }
   }
 }
 
@@ -54,16 +76,18 @@ export async function publishPostToMeta(
   if (ad.status !== 'approved') return { success: false, error: 'Ad must be approved before posting' }
   if (!ad.is_organic_post) return { success: false, error: 'This is a paid ad, not an organic post — use the publish route' }
 
-  const pageToken = await getPageToken(userToken)
-  if (!pageToken) {
+  const pageTokenResult = await getPageToken(userToken)
+  if (!pageTokenResult.token) {
     return {
       success: false,
-      needsReauth: true,
-      error:
-        'Cannot get a page access token. The current Meta token is missing pages_manage_posts scope. ' +
-        'Re-authorize at developers.facebook.com → Graph API Explorer → request pages_manage_posts, pages_read_engagement, pages_show_list.',
+      needsReauth: pageTokenResult.isAuthError,
+      error: pageTokenResult.isAuthError
+        ? `Meta token needs re-authorization: ${pageTokenResult.error}. ` +
+          'Re-authorize at developers.facebook.com → Graph API Explorer → request pages_manage_posts, pages_read_engagement, pages_show_list.'
+        : `Could not get a page access token (likely transient): ${pageTokenResult.error}`,
     }
   }
+  const pageToken = pageTokenResult.token
 
   // The website link is appended in code, not left to the AI, so every post
   // that actually goes out has a guaranteed path to a lead — the whole point
