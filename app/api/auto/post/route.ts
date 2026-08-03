@@ -5,7 +5,7 @@ import { isCronRequest } from '@/lib/auth/cron'
 import { generateAd } from '@/lib/ads/creative'
 import { publishPostToMeta } from '@/lib/ads/social'
 import { AUTO_POST_ROTATION_TYPES } from '@/lib/optimizer/config'
-import { assignVariants, recordAssignment } from '@/lib/experiments/growthbook'
+import { assignVariants, recordAllAssignments, ensureBaselineExperiments } from '@/lib/experiments/growthbook'
 import { sendTelegramApproval, sendTelegramNotice, sendTelegramFailure } from '@/lib/notifications/telegram'
 
 export const maxDuration = 60
@@ -76,16 +76,20 @@ async function runAutoPost(authHeader: string | null) {
     auto_post_rotation_index: rotationIndex + 1,
   }).eq('id', 1)
 
+  // Organic posts only ever test image_style (no Meta ad targeting to vary),
+  // but they now go through the same experiment machinery paid ads use —
+  // previously this called assignVariants without ever seeding the baseline
+  // experiment first, so a product line with no paid history yet got no
+  // assignment at all and every organic post silently skipped calibration.
   let style = 'lifestyle'
-  let experimentKey: string | undefined
-  let experimentVariant: string | undefined
+  let assignments: Record<string, string> = {}
+  let assignmentKeys: Record<string, string> = {}
   try {
-    const { assignments, keys } = await assignVariants(adType, `${adType}-autopost-${Date.now()}`)
-    if (assignments.image_style) {
-      style = assignments.image_style
-      experimentVariant = assignments.image_style
-      experimentKey = keys.image_style
-    }
+    await ensureBaselineExperiments([adType], ['image_style'])
+    const result = await assignVariants(adType, `${adType}-autopost-${Date.now()}`)
+    assignments = result.assignments
+    assignmentKeys = result.keys
+    if (assignments.image_style) style = assignments.image_style
   } catch {
     // Non-fatal — fall through with the default style.
   }
@@ -96,14 +100,12 @@ async function runAutoPost(authHeader: string | null) {
       mode: 'post',
       imageStyle: style,
       generatedBy: 'auto_post',
-      experimentKey,
-      experimentVariant,
+      experimentKey: assignmentKeys.image_style,
+      experimentVariant: assignments.image_style,
     })
     const adId = ad.id as string
 
-    if (experimentKey && experimentVariant) {
-      await recordAssignment({ experimentKey, adId, variant: experimentVariant }).catch(() => {})
-    }
+    await recordAllAssignments(adId, assignments, assignmentKeys).catch(() => {})
 
     if (draft.requires_human_review) {
       const telegramMessageId = await sendTelegramApproval({

@@ -5,7 +5,7 @@ import { generateAd } from '@/lib/ads/creative'
 import { CPL_TARGETS, GUARDRAILS, daysRunning } from '@/lib/optimizer/config'
 import {
   assignVariants,
-  recordAssignment,
+  recordAllAssignments,
   ensureBaselineExperiments,
 } from '@/lib/experiments/growthbook'
 import { isCronRequest } from '@/lib/auth/cron'
@@ -161,7 +161,10 @@ async function runRefresh(authHeader: string | null) {
   }
 
   // Make sure there's an experiment to assign against before generating.
-  await ensureBaselineExperiments([...bestByType.keys()]).catch(() => {})
+  // audience_type only applies in ad mode — organic posts have no Meta
+  // targeting to vary.
+  const refreshDimensions = mode === 'ad' ? (['image_style', 'audience_type'] as const) : (['image_style'] as const)
+  await ensureBaselineExperiments([...bestByType.keys()], [...refreshDimensions]).catch(() => {})
 
   const refreshed: { ad_type: string; ad_id: string; variant: string | null }[] = []
   const skipped: { ad_type: string; why: string }[] = []
@@ -174,15 +177,13 @@ async function runRefresh(authHeader: string | null) {
 
     // Let the running experiment pick the style; fall back to what won before.
     let style = winner.image_style ?? 'lifestyle'
-    let experimentKey: string | undefined
-    let experimentVariant: string | undefined
+    let assignments: Record<string, string> = {}
+    let assignmentKeys: Record<string, string> = {}
     try {
-      const { assignments, keys } = await assignVariants(adType, `${adType}-refresh-${Date.now()}`)
-      if (assignments.image_style) {
-        style = assignments.image_style
-        experimentVariant = assignments.image_style
-        experimentKey = keys.image_style
-      }
+      const result = await assignVariants(adType, `${adType}-refresh-${Date.now()}`)
+      assignments = result.assignments
+      assignmentKeys = result.keys
+      if (assignments.image_style) style = assignments.image_style
     } catch {
       // Fall through with the previous winner's style.
     }
@@ -195,8 +196,8 @@ async function runRefresh(authHeader: string | null) {
         mode,
         winningContext,
         generatedBy: 'refresh_job',
-        experimentKey,
-        experimentVariant,
+        experimentKey: assignmentKeys.image_style,
+        experimentVariant: assignments.image_style,
       })
 
       const adId = ad.id as string
@@ -213,15 +214,9 @@ async function runRefresh(authHeader: string | null) {
         notes: `Refreshed from winning campaign (score ${winner.latest_score ?? '—'}, ${winner.total_leads ?? 0} leads). Style: ${style}.`,
       })
 
-      if (experimentKey && experimentVariant) {
-        await recordAssignment({
-          experimentKey,
-          adId,
-          variant: experimentVariant,
-        }).catch(() => {})
-      }
+      await recordAllAssignments(adId, assignments, assignmentKeys).catch(() => {})
 
-      refreshed.push({ ad_type: adType, ad_id: adId, variant: experimentVariant ?? null })
+      refreshed.push({ ad_type: adType, ad_id: adId, variant: assignments.image_style ?? null })
     } catch (err) {
       const why = err instanceof Error ? err.message : 'generation failed'
       skipped.push({ ad_type: adType, why })

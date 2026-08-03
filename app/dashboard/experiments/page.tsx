@@ -18,6 +18,10 @@ interface VariantResult {
   cpl: number | null
   score: number | null
   n: number
+  organicImpressions: number
+  organicEngagements: number
+  organicN: number
+  engagementRate: number | null
 }
 
 interface Experiment {
@@ -135,9 +139,20 @@ export default function ExperimentsPage() {
               const withLeads = arms
                 .map(v => ({ variant: v, r: exp.results?.[v] }))
                 .filter(a => a.r && a.r.leads > 0)
-              const best = withLeads
-                .filter(a => a.r!.cpl != null)
-                .sort((a, b) => (a.r!.cpl as number) - (b.r!.cpl as number))[0]
+              // Organic-only ad types (posted, never advertised — e.g. Medicare
+              // under Posting Mode) never accumulate leads, so without this
+              // fallback their experiments would sit at "no data yet" forever
+              // even with real engagement volume behind them.
+              const withEngagement = arms
+                .map(v => ({ variant: v, r: exp.results?.[v] }))
+                .filter(a => a.r && a.r.organicImpressions > 0)
+              const best = withLeads.length > 0
+                ? withLeads
+                    .filter(a => a.r!.cpl != null)
+                    .sort((a, b) => (a.r!.cpl as number) - (b.r!.cpl as number))[0]
+                : withEngagement
+                    .filter(a => a.r!.engagementRate != null)
+                    .sort((a, b) => (b.r!.engagementRate as number) - (a.r!.engagementRate as number))[0]
 
               return (
                 <motion.div
@@ -175,7 +190,7 @@ export default function ExperimentsPage() {
                               <span className="text-green-400 text-xs">leading</span>
                             )}
                           </div>
-                          {r ? (
+                          {r && r.leads > 0 ? (
                             <div className="space-y-0.5">
                               <p className="text-white text-lg font-semibold leading-tight">
                                 {money(r.cpl)}
@@ -189,10 +204,20 @@ export default function ExperimentsPage() {
                                 </p>
                               )}
                             </div>
+                          ) : r && r.organicImpressions > 0 ? (
+                            <div className="space-y-0.5">
+                              <p className="text-white text-lg font-semibold leading-tight">
+                                {r.engagementRate != null ? `${(r.engagementRate * 100).toFixed(1)}%` : '—'}
+                              </p>
+                              <p className="text-gray-500 text-xs">
+                                engagement rate · {r.organicImpressions} impressions
+                              </p>
+                              <p className="text-gray-600 text-xs">{r.organicN} post{r.organicN === 1 ? '' : 's'} (organic)</p>
+                            </div>
                           ) : (
                             <p className="text-gray-600 text-xs">No data yet</p>
                           )}
-                          {r && r.leads > 0 && (
+                          {r && (r.leads > 0 || r.organicImpressions > 0) && (
                             <div className="mt-2">
                               <Button
                                 onClick={() => pinWinner(exp.id, variant)}
@@ -208,9 +233,10 @@ export default function ExperimentsPage() {
                     })}
                   </div>
 
-                  {withLeads.length < 2 && (
+                  {withLeads.length < 2 && withEngagement.length < 2 && (
                     <p className="text-gray-600 text-xs mt-3">
-                      Needs at least 10 leads per variant before a winner can be called automatically.
+                      Needs at least 10 leads per variant (or 1,000 organic impressions per variant
+                      for post-only product lines) before a winner can be called automatically.
                     </p>
                   )}
                 </motion.div>

@@ -1,10 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/auto/post",
-      "schedule": "0 14 * * *"
-    },
-    {
       "path": "/api/meta/sync",
       "schedule": "0 15 * * *"
     },
@@ -17,8 +13,12 @@
       "schedule": "30 15 * * *"
     },
     {
+      "path": "/api/auto/post",
+      "schedule": "0 22 * * *"
+    },
+    {
       "path": "/api/auto/ads",
-      "schedule": "45 15 * * *"
+      "schedule": "15 22 * * *"
     },
     {
       "path": "/api/meta/refresh-creative",

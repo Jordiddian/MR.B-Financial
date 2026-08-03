@@ -6,7 +6,7 @@ import { generateAd } from '@/lib/ads/creative'
 import { publishAdToMeta } from '@/lib/ads/meta-publish'
 import { planBudget } from '@/lib/optimizer/budget'
 import { AUTO_ELIGIBLE_TYPES, isInLearningPhase, daysRunning, GUARDRAILS } from '@/lib/optimizer/config'
-import { assignVariants, recordAssignment } from '@/lib/experiments/growthbook'
+import { assignVariants, recordAllAssignments, ensureBaselineExperiments } from '@/lib/experiments/growthbook'
 
 export const maxDuration = 120
 
@@ -139,16 +139,18 @@ async function runAutoAds(authHeader: string | null) {
     auto_ads_rotation_index: rotationIndex + 1,
   }).eq('id', 1)
 
+  // Paid ads test both image_style and audience_type (the targeting-language
+  // calibration) — audience_type has no meaning for organic posts, so this
+  // route is the only auto-generation path that seeds it.
   let style = 'lifestyle'
-  let experimentKey: string | undefined
-  let experimentVariant: string | undefined
+  let assignments: Record<string, string> = {}
+  let assignmentKeys: Record<string, string> = {}
   try {
-    const { assignments, keys } = await assignVariants(adType, `${adType}-autoads-${Date.now()}`)
-    if (assignments.image_style) {
-      style = assignments.image_style
-      experimentVariant = assignments.image_style
-      experimentKey = keys.image_style
-    }
+    await ensureBaselineExperiments([adType], ['image_style', 'audience_type'])
+    const result = await assignVariants(adType, `${adType}-autoads-${Date.now()}`)
+    assignments = result.assignments
+    assignmentKeys = result.keys
+    if (assignments.image_style) style = assignments.image_style
   } catch {
     // Non-fatal.
   }
@@ -159,14 +161,12 @@ async function runAutoAds(authHeader: string | null) {
       mode: 'ad',
       imageStyle: style,
       generatedBy: 'auto_ads',
-      experimentKey,
-      experimentVariant,
+      experimentKey: assignmentKeys.image_style,
+      experimentVariant: assignments.image_style,
     })
     const adId = ad.id as string
 
-    if (experimentKey && experimentVariant) {
-      await recordAssignment({ experimentKey, adId, variant: experimentVariant }).catch(() => {})
-    }
+    await recordAllAssignments(adId, assignments, assignmentKeys).catch(() => {})
 
     // Hard compliance carve-out — see file header. Not gated by any setting.
     if (draft.requires_cms_filing || draft.requires_human_review) {

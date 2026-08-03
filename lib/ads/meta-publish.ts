@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { planBudget, type BudgetPlan } from '@/lib/optimizer/budget'
 import { AGENT_INFO, LANDING_URL } from '@/lib/ads/creative'
+import { getAssignedVariants } from '@/lib/experiments/growthbook'
+import { PRODUCT_INTERESTS } from '@/lib/optimizer/interests'
+import { PRODUCT_STATES } from '@/lib/optimizer/geo'
 
 // Single source of truth for pushing an approved ad to Meta as a real
 // campaign/adset/creative/ad. Both the manual "Push to Meta" button
@@ -22,6 +25,71 @@ async function metaPost(path: string, params: Record<string, string>) {
     throw new Error(json.error?.error_user_msg || json.error?.message || 'Meta API error')
   }
   return json
+}
+
+/**
+ * Resolve interest names (from PRODUCT_INTERESTS) to real Meta interest IDs
+ * via the targeting search endpoint. This is the piece that was missing
+ * entirely — the system prompt has always described interest-based
+ * targeting, but nothing ever turned it into a real Meta `flexible_spec`.
+ * Any name that fails to resolve is just skipped, never fatal — the ad
+ * still gets geo-only targeting at minimum.
+ */
+async function resolveInterestIds(
+  names: string[],
+  token: string
+): Promise<{ id: string; name: string }[]> {
+  const results = await Promise.all(names.map(async name => {
+    try {
+      const res = await fetch(
+        `${GRAPH}/search?type=adinterest&q=${encodeURIComponent(name)}&limit=1&access_token=${token}`
+      )
+      const json = await res.json()
+      const match = json.data?.[0]
+      return match?.id ? { id: match.id as string, name: (match.name ?? name) as string } : null
+    } catch {
+      // Skip this one interest — targeting still works with whatever resolved.
+      return null
+    }
+  }))
+  return results.filter((r): r is { id: string; name: string } => r !== null)
+}
+
+/**
+ * Resolve US state names (from PRODUCT_STATES) to real Meta region keys via
+ * the targeting search endpoint — resolved live rather than hardcoded so a
+ * wrong memorized key can never silently mistarget or omit a licensed
+ * state. Every campaign used to hardcode California's region key regardless
+ * of ad_type; this is what makes Final Expense (licensed in 11 states)
+ * actually reach the other 10 instead of only California.
+ */
+async function resolveRegionKeys(
+  stateNames: string[],
+  token: string
+): Promise<{ key: string; name: string }[]> {
+  // Dental/Vision now resolve all 50 states per publish — chunked concurrency
+  // keeps that from either serializing 50 round-trips or firing 50 at once
+  // against Meta's rate limits.
+  const CHUNK_SIZE = 10
+  const resolved: { key: string; name: string }[] = []
+  for (let i = 0; i < stateNames.length; i += CHUNK_SIZE) {
+    const chunk = stateNames.slice(i, i + CHUNK_SIZE)
+    const results = await Promise.all(chunk.map(async name => {
+      try {
+        const res = await fetch(
+          `${GRAPH}/search?type=adgeolocation&location_types=["region"]&q=${encodeURIComponent(name)}&limit=1&access_token=${token}`
+        )
+        const json = await res.json()
+        const match = json.data?.[0]
+        return match?.key ? { key: match.key as string, name: (match.name ?? name) as string } : null
+      } catch {
+        // Skip this one state — targeting still works with whatever resolved.
+        return null
+      }
+    }))
+    for (const r of results) if (r) resolved.push(r)
+  }
+  return resolved
 }
 
 async function uploadImage(accountId: string, token: string, imageUrl: string): Promise<string | null> {
@@ -79,6 +147,13 @@ export async function publishAdToMeta(
   if (ad.status !== 'approved') return { success: false, error: 'Ad must be approved before publishing' }
   if (!ad.image_url) return { success: false, error: 'Ad has no image — cannot publish to Meta' }
 
+  // What was assigned at generation time — audience_type decides real Meta
+  // targeting below; image_style is just recorded accurately instead of the
+  // hardcoded 'lifestyle' this used to write regardless of what was used.
+  const assignedVariants = await getAssignedVariants(adId).catch(() => ({}) as Record<string, string>)
+  const audienceType = assignedVariants.audience_type === 'interest' ? 'interest' : 'broad'
+  const imageStyleUsed = assignedVariants.image_style ?? 'lifestyle'
+
   const { data: budgetRow } = await supabase.from('budget_settings').select('monthly_cap').eq('id', 1).single()
   const monthlyCapCents = Math.round((budgetRow?.monthly_cap ?? 50) * 100)
 
@@ -104,6 +179,34 @@ export async function publishAdToMeta(
       access_token: token,
     })
 
+    // Geo: resolved per-product from PRODUCT_STATES, not a blanket
+    // California key applied to every ad_type regardless of where the agent
+    // is actually licensed.
+    const licensedStates = PRODUCT_STATES[ad.ad_type] ?? ['California']
+    const regions = await resolveRegionKeys(licensedStates, token)
+    const resolvedRegions = regions.length > 0 ? regions : [{ key: '3847', name: 'California' }]
+
+    // Audience: broad (geo only) unless the audience_type experiment
+    // assigned this ad to the interest arm, in which case layer in this
+    // product's interests too. Special Ads Category (CREDIT, set above)
+    // still blocks age/gender/zip precision regardless of this.
+    let resolvedInterests: { id: string; name: string }[] = []
+    if (audienceType === 'interest') {
+      const names = PRODUCT_INTERESTS[ad.ad_type] ?? []
+      resolvedInterests = await resolveInterestIds(names, token)
+    }
+
+    const targeting: Record<string, unknown> = {
+      geo_locations: { regions: resolvedRegions.map(r => ({ key: r.key })) },
+    }
+    if (resolvedInterests.length > 0) {
+      targeting.flexible_spec = [{ interests: resolvedInterests.map(i => ({ id: i.id, name: i.name })) }]
+    }
+    // If audienceType was 'interest' but nothing resolved, this silently
+    // falls back to broad — a failed interest lookup should never block
+    // publishing, just narrow it back to geo-only.
+    const actualAudienceType = resolvedInterests.length > 0 ? 'interest' : 'broad'
+
     const adset = await metaPost(`${accountId}/adsets`, {
       name: `MRB ${ad.ad_type} adset`,
       campaign_id: campaign.id,
@@ -112,9 +215,7 @@ export async function publishAdToMeta(
       optimization_goal: 'LINK_CLICKS',
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       status: 'PAUSED',
-      targeting: JSON.stringify({
-        geo_locations: { regions: [{ key: '3847' }] }, // California — licensed service area
-      }),
+      targeting: JSON.stringify(targeting),
       ...(plan.endTimeUnix ? { end_time: String(plan.endTimeUnix) } : {}),
       access_token: token,
     })
@@ -178,9 +279,9 @@ export async function publishAdToMeta(
       ad_type: ad.ad_type,
       campaign_name: `MRB ${ad.ad_type} — ${now.toISOString().split('T')[0]}`,
       objective: 'OUTCOME_TRAFFIC',
-      audience_type: 'broad',
+      audience_type: actualAudienceType,
       placement: 'automatic',
-      image_style: 'lifestyle',
+      image_style: imageStyleUsed,
       daily_budget_cents: plan.dailyBudgetCents,
       status: activated ? 'active' : 'active', // tracked as active regardless — PAUSED-in-Meta campaigns still get synced
       started_at: now.toISOString(),
