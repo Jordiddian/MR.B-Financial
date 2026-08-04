@@ -1,5 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import { Page, PageHeader, Card, EmptyState, Table, Row, Cell, Badge } from '../ui'
+
+// Service-role client, not the cookie-bound anon client — leads has RLS
+// enabled with no policy for the authenticated role, so the anon client
+// silently returned zero rows here regardless of real data (see
+// dashboard/page.tsx for the full explanation).
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -10,8 +19,6 @@ function fmtDate(iso: string) {
 }
 
 export default async function LeadsPage() {
-  const supabase = await createClient()
-
   // The 7-day count is done by the database rather than filtered in JS, so the
   // page doesn't have to hold every row in memory to produce it.
   //

@@ -1,9 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import SyncButton from './SyncButton'
 import { CPL_TARGETS, AD_TYPES } from '@/lib/optimizer/config'
 import {
   Page, PageHeader, Card, Table, Row, Cell, ScoreText, money, cplTone, Badge,
 } from '../ui'
+
+// Service-role client, not the cookie-bound anon client — ad_performance has
+// RLS enabled with no policy for the authenticated role, so the anon client
+// silently returned zero rows here regardless of real data (see
+// dashboard/page.tsx for the full explanation).
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 interface PerfRow {
   ad_type: string
@@ -24,8 +33,6 @@ const CPL_TEXT: Record<string, string> = {
 }
 
 export default async function PerformancePage() {
-  const supabase = await createClient()
-
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
