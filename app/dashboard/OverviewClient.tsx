@@ -46,6 +46,19 @@ export default function OverviewClient({ budget }: { budget: BudgetContext }) {
   const [range, setRange] = useState(30)
   const [data, setData] = useState<ReportingData | null>(null)
   const [loadedRange, setLoadedRange] = useState<number | null>(null)
+  const [realOpenAiSpend, setRealOpenAiSpend] = useState<number | null>(null)
+
+  // Ground-truth OpenAI spend from their Costs API, alongside the
+  // estimate-based spentThisMonth below — the estimate is what actually
+  // gates the monthly cap in real time, but it can drift from what OpenAI
+  // really billed (older entries were flat per-generation guesses), so this
+  // is shown for comparison rather than replacing it.
+  useEffect(() => {
+    fetch('/api/costs/openai')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.totalUsd != null) setRealOpenAiSpend(d.totalUsd) })
+      .catch(() => {})
+  }, [])
 
   // Derived rather than stored: we're loading whenever the range we're showing
   // isn't the range we've fetched. Setting a loading flag synchronously inside
@@ -126,7 +139,11 @@ export default function OverviewClient({ budget }: { budget: BudgetContext }) {
         <StatCard
           label="Spent this month"
           value={`$${spentThisMonth.toFixed(2)}`}
-          hint="ads + API costs"
+          hint={
+            realOpenAiSpend != null
+              ? `ads + API · $${realOpenAiSpend.toFixed(2)} actual OpenAI spend`
+              : 'ads + API costs'
+          }
           delay={0.05}
         />
         <StatCard
