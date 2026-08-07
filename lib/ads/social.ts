@@ -49,6 +49,13 @@ export interface PostResult {
   success: true
   facebookPostId: string | null
   instagramMediaId: string | null
+  // Set when the overall call still counts as success (the other platform
+  // came through) but one side quietly failed — previously any failure on
+  // either platform just left its id null with zero trace of why, which is
+  // exactly what happened to a Dental post that published to Facebook but
+  // silently failed on Instagram with no error ever recorded anywhere.
+  facebookError?: string
+  instagramError?: string
 }
 
 export interface PostError {
@@ -107,6 +114,8 @@ export async function publishPostToMeta(
 
   let facebookPostId: string | null = null
   let instagramMediaId: string | null = null
+  let facebookError: string | undefined
+  let instagramError: string | undefined
 
   if (platform === 'facebook' || platform === 'both') {
     try {
@@ -118,6 +127,7 @@ export async function publishPostToMeta(
         })
         const photoJson = await photoRes.json()
         facebookPostId = photoJson.post_id ?? photoJson.id ?? null
+        if (!facebookPostId) facebookError = photoJson.error?.message ?? `HTTP ${photoRes.status}, no post id returned`
       } else {
         const feedRes = await fetch(`${GRAPH}/${PAGE_ID}/feed`, {
           method: 'POST',
@@ -125,9 +135,10 @@ export async function publishPostToMeta(
         })
         const feedJson = await feedRes.json()
         facebookPostId = feedJson.id ?? null
+        if (!facebookPostId) facebookError = feedJson.error?.message ?? `HTTP ${feedRes.status}, no post id returned`
       }
-    } catch {
-      facebookPostId = null
+    } catch (err) {
+      facebookError = err instanceof Error ? err.message : 'Network error posting to Facebook'
     }
   }
 
@@ -137,30 +148,59 @@ export async function publishPostToMeta(
       const igIdJson = await igIdRes.json()
       const igId = igIdJson.instagram_business_account?.id
 
-      if (igId && ad.image_url) {
+      if (!igId) {
+        instagramError = 'No Instagram business account linked to this Facebook page'
+      } else if (!ad.image_url) {
+        instagramError = 'Ad has no image_url — Instagram requires an image'
+      } else {
         const containerRes = await fetch(`${GRAPH}/${igId}/media`, {
           method: 'POST',
           body: new URLSearchParams({ image_url: ad.image_url, caption: instagramText, access_token: pageToken }),
         })
         const container = await containerRes.json()
-        if (container.id) {
-          const publishRes = await fetch(`${GRAPH}/${igId}/media_publish`, {
-            method: 'POST',
-            body: new URLSearchParams({ creation_id: container.id, access_token: pageToken }),
-          })
-          const published = await publishRes.json()
-          instagramMediaId = published.id ?? null
+        if (!container.id) {
+          instagramError = container.error?.message ?? `HTTP ${containerRes.status}, container creation failed`
+        } else {
+          // Meta processes the image asynchronously — publishing immediately
+          // after creation can hit the container before it's ready
+          // (status_code stays IN_PROGRESS briefly). Poll until FINISHED
+          // instead of racing it, since calling media_publish too early is a
+          // real, documented cause of intermittent Instagram publish
+          // failures with no useful error message.
+          let statusCode = 'IN_PROGRESS'
+          for (let attempt = 0; attempt < 10 && statusCode === 'IN_PROGRESS'; attempt++) {
+            if (attempt > 0) await new Promise(r => setTimeout(r, 1000))
+            const statusRes = await fetch(`${GRAPH}/${container.id}?fields=status_code&access_token=${pageToken}`)
+            const statusJson = await statusRes.json()
+            statusCode = statusJson.status_code ?? 'ERROR'
+          }
+
+          if (statusCode !== 'FINISHED') {
+            instagramError = `Container never became ready (status: ${statusCode})`
+          } else {
+            const publishRes = await fetch(`${GRAPH}/${igId}/media_publish`, {
+              method: 'POST',
+              body: new URLSearchParams({ creation_id: container.id, access_token: pageToken }),
+            })
+            const published = await publishRes.json()
+            instagramMediaId = published.id ?? null
+            if (!instagramMediaId) instagramError = published.error?.message ?? `HTTP ${publishRes.status}, no media id returned`
+          }
         }
       }
-    } catch {
-      instagramMediaId = null
+    } catch (err) {
+      instagramError = err instanceof Error ? err.message : 'Network error posting to Instagram'
     }
   }
 
   // Only mark live if at least one platform actually produced a post ID —
   // otherwise a silent Meta failure would still show as "posted" in the portal.
   if (!facebookPostId && !instagramMediaId) {
-    return { success: false, error: 'Meta did not return a post ID on either platform — the post likely failed' }
+    return {
+      success: false,
+      error: [facebookError, instagramError].filter(Boolean).join(' | ') ||
+        'Meta did not return a post ID on either platform — the post likely failed',
+    }
   }
 
   await supabase
@@ -172,5 +212,5 @@ export async function publishPostToMeta(
     })
     .eq('id', adId)
 
-  return { success: true, facebookPostId, instagramMediaId }
+  return { success: true, facebookPostId, instagramMediaId, facebookError, instagramError }
 }

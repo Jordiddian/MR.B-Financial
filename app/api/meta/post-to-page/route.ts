@@ -27,5 +27,9 @@ export async function POST(request: Request) {
       facebook: result.facebookPostId ?? undefined,
       instagram: result.instagramMediaId ?? undefined,
     },
+    partial_errors: {
+      facebook: result.facebookError,
+      instagram: result.instagramError,
+    },
   })
 }

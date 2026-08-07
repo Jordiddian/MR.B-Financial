@@ -146,9 +146,19 @@ async function runAutoPost(authHeader: string | null) {
       return NextResponse.json({ ran: true, ad_type: adType, ad_id: adId, status: 'failed', error: result.error })
     }
 
+    // A partial failure (one platform posted, the other silently didn't) used
+    // to leave zero trace — the failed side's id was just null with no
+    // reason logged anywhere. Surface it even though the run still counts as
+    // published overall.
+    const partialFailure = [
+      result.facebookError ? `Facebook: ${result.facebookError}` : null,
+      result.instagramError ? `Instagram: ${result.instagramError}` : null,
+    ].filter(Boolean).join(' | ') || null
+
     await supabase.from('auto_action_log').insert({
       kind: 'post', ad_type: adType, ad_id: adId,
       status: 'published',
+      reason: partialFailure,
       result: { facebookPostId: result.facebookPostId, instagramMediaId: result.instagramMediaId },
     })
 

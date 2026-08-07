@@ -101,13 +101,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  const partialFailure = [
+    result.facebookError ? `Facebook: ${result.facebookError}` : null,
+    result.instagramError ? `Instagram: ${result.instagramError}` : null,
+  ].filter(Boolean).join(' | ')
+
   await supabase.from('auto_action_log').insert({
     kind: 'post', ad_type: ad.ad_type, ad_id: ad.id,
     status: 'published',
     result: { facebookPostId: result.facebookPostId, instagramMediaId: result.instagramMediaId },
-    reason: 'Approved via Telegram reply.',
+    reason: partialFailure ? `Approved via Telegram reply. ${partialFailure}` : 'Approved via Telegram reply.',
   })
-  await sendTelegramText(`✅ Approved and posted — "${ad.headline}" (${ad.ad_type}).`)
+  await sendTelegramText(
+    partialFailure
+      ? `✅ Approved and posted — "${ad.headline}" (${ad.ad_type}). ⚠️ ${partialFailure}`
+      : `✅ Approved and posted — "${ad.headline}" (${ad.ad_type}).`
+  )
 
   return NextResponse.json({ ok: true })
 }
