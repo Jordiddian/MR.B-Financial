@@ -8,7 +8,13 @@ import { AUTO_POST_ROTATION_TYPES } from '@/lib/optimizer/config'
 import { assignVariants, recordAllAssignments, ensureBaselineExperiments } from '@/lib/experiments/growthbook'
 import { sendTelegramApproval, sendTelegramNotice, sendTelegramFailure } from '@/lib/notifications/telegram'
 
-export const maxDuration = 60
+// Was 60 — copy + image generation plus the Instagram container-ready poll
+// (up to 10s, added for publish reliability) could push a full run past that,
+// which is exactly what killed a real run mid-publish: the ad was generated
+// successfully but the function got cut off during the Meta publish step,
+// so the DB was left with an approved-but-never-published ad and no error
+// logged (the timeout kills the function before any catch/log can run).
+export const maxDuration = 120
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
