@@ -58,10 +58,16 @@ async function runAutoPost(authHeader: string | null) {
   if (settings.last_auto_post_at) {
     const elapsedHours = (Date.now() - new Date(settings.last_auto_post_at).getTime()) / 3_600_000
     if (elapsedHours < cadenceHours) {
-      return NextResponse.json({
-        ran: false,
-        note: `Last auto-post was ${elapsedHours.toFixed(1)}h ago — next one due at ${cadenceHours}h.`,
+      // Previously a silent no-op — if the prior day's post landed a bit
+      // after the target time (Vercel's cron timing isn't exact), the next
+      // day's run can land just under 24h and skip with zero trace anywhere,
+      // making a genuinely-missed day indistinguishable from an
+      // intentionally-skipped one after the fact.
+      const note = `Last auto-post was ${elapsedHours.toFixed(1)}h ago — next one due at ${cadenceHours}h.`
+      await supabase.from('auto_action_log').insert({
+        kind: 'post', ad_type: 'n/a', status: 'skipped', reason: note,
       })
+      return NextResponse.json({ ran: false, note })
     }
   }
 
