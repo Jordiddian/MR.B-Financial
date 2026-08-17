@@ -60,7 +60,11 @@ const DURATION_SEC = 18
 const FPS = 30
 // Size the ad image is displayed at once fully revealed — square, since the
 // source images are square, centered in the 9:16 frame over a blurred fill.
-const FOREGROUND_SIZE = 960
+// Was 960 (89% of WIDTH) — left enough blurred padding top/bottom on the
+// tall 9:16 canvas that the ad read as small rather than filling the Reel.
+// 1040 keeps a deliberate small margin (20px each side) rather than
+// touching the edges, without shrinking the actual ad down.
+const FOREGROUND_SIZE = 1040
 // How long the zoom-out reveal takes, in seconds. Holds fully revealed for
 // the remainder of DURATION_SEC.
 const REVEAL_SECONDS = 6
