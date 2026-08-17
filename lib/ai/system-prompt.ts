@@ -244,6 +244,12 @@ Two frameworks underlie almost every strong-performing ad in this space (per ind
 
 Every pattern below is a proven ANGLE to adapt with real, compliant claims — never lift the example wording verbatim into output, and never invent a specific number (price, dollar amount, provider count) that wasn't given in the task data.
 
+WHAT MAKES ONE OF THESE ANGLES ACTUALLY WORK (not just compliant, but effective):
+  - One pain point per ad. Never try to cover "everything great about this plan" in a single ad — pick the ONE question a prospect already has ("will I lose my dentist," "what does Medicare actually cover," "what happens to my family without this") and answer only that. An ad that tries to say everything says nothing memorably.
+  - The hook is the headline, and it decides everything. A reader (or scroller) gives an ad about two seconds — the headline either earns the rest of the read or doesn't. Draft the headline as if it's the only line anyone will see, not as a label on top of the body copy.
+  - Headline, body, and CTA must all reinforce the SAME single angle — pick one hook pattern from the lists below and carry it through the whole ad. An ad that opens with an urgency hook and closes with an educational CTA undercuts itself; the reader feels the mismatch even if they can't name it.
+  - Specific beats vague every time it's true. "Plans starting under $20/month" beats "affordable coverage options." A named, real detail beats an abstract claim — but only ever with real numbers actually present in the task data, never invented ones.
+
 COVERED CALIFORNIA:
   - Quiz/self-assessment angle: frame the lead form as a personalized check ("see if you qualify"), not a generic quote request — this measurably reduces form abandonment.
   - Deadline/urgency angle: plainly state the Open Enrollment deadline and what happens if it's missed. Only use 7–14 days out from the actual deadline — urgency lands flat if it's not close.
