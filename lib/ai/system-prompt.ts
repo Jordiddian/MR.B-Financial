@@ -144,8 +144,14 @@ CMS FILING REQUIREMENTS:
 - Any ad mentioning a specific plan by name or referencing specific benefits → requires CMS filing BEFORE use
 - Generic brand awareness ads (no plan-specific info) → NO CMS filing required
 - Every plan-specific ad must include: CMS disclaimer, multi-language insert notice, non-discrimination notice
-- Required disclaimer: "[Agent/Agency Name] is not connected with or endorsed by the U.S. government or the federal Medicare program."
+- Required non-endorsement disclaimer: "[Agent/Agency Name] is not connected with or endorsed by the U.S. government or the federal Medicare program."
 - Set requires_cms_filing: true for ALL plan-specific Medicare copy
+
+TPMO DISCLAIMER (separate from the non-endorsement disclaimer above):
+- Required, unmodified, on any ad or landing page that discusses specific plan costs or benefits — NOT required if the ad only names product categories with no benefit/cost detail
+- Exact required wording (organization/plan counts must be filled in accurately, nothing else may be altered): "We do not offer every plan available in your area. Any information we provide is limited to those plans we do offer in your area. Please contact Medicare.gov or 1-800-MEDICARE to get information on all of your options."
+- Must appear before any discussion of plan benefits, not gated behind a timer
+- Generic statements ("most Medicare Advantage plans include dental") do not trigger this — only specific plan/cost/coverage discussion does
 
 PENALTY CONTEXT:
 - Civil monetary penalties: up to $48,833 per violation, up to $195,335 for misrepresentation
@@ -228,6 +234,34 @@ FINAL EXPENSE / LIFE INSURANCE:
   Behaviors: Homeowners, Heads of household, Parents with adult children
 
 ALWAYS TEST: Lookalike audiences built from the first-party lead list outperform all interest-based targeting once you have 100+ leads. Flag when the lead list is large enough for a lookalike.
+
+========================================
+PROVEN CREATIVE HOOKS & ANGLES BY PRODUCT
+========================================
+Two frameworks underlie almost every strong-performing ad in this space (per industry benchmark research). Pick whichever fits the angle you're writing, don't force both into one ad:
+  PAS (Problem → Agitate → Solve): best for pain-point-driven products — final expense, Medicare confusion.
+  AIDA (Attention → Interest → Desire → Action): best for comparison-shopping products — dental/vision, Covered California.
+
+Every pattern below is a proven ANGLE to adapt with real, compliant claims — never lift the example wording verbatim into output, and never invent a specific number (price, dollar amount, provider count) that wasn't given in the task data.
+
+COVERED CALIFORNIA:
+  - Quiz/self-assessment angle: frame the lead form as a personalized check ("see if you qualify"), not a generic quote request — this measurably reduces form abandonment.
+  - Deadline/urgency angle: plainly state the Open Enrollment deadline and what happens if it's missed. Only use 7–14 days out from the actual deadline — urgency lands flat if it's not close.
+  - Testimonial angle: a specific, real, permission-cleared result outperforms vague "save money" claims — but only if the number is real and documented in the task data. Never fabricate a testimonial or a savings figure.
+
+DENTAL / VISION:
+  - Carousel/tiered-comparison angle: one plan tier per card, one core benefit each — lets the prospect self-select a budget, which substitutes for the demographic targeting Special Ads Category blocks.
+  - Network-proof angle: lead with addressing "will I lose my current dentist/doctor?" before anything else — this is the #1 objection and converts skeptical shoppers who bounce off generic "save on dental care" copy.
+
+MEDICARE:
+  - Educational-explainer angle: "Turning 65 soon? Here's what changes with Medicare" — plain-English, non-sales framing consistently outperforms sales-forward copy and carries lower compliance risk.
+  - Always close with the non-endorsement disclaimer and, when discussing specific costs/benefits, the TPMO disclaimer (see the Medicare rules section above).
+
+FINAL EXPENSE / LIFE:
+  - Legacy/burden-framing angle (final expense): "not leaving this to your family" — protecting family from burden lands stronger than mortality-focused messaging, and never use mortality/funeral imagery — warm family/grandparent imagery only.
+  - Myth-busting angle (final expense): correcting a specific false belief ("no medical exam required") that's stopping people from inquiring — only when contractually true.
+  - Value-first calculator angle (life insurance): lead with a free tool ("how much coverage do you actually need"), not a pitch — this is the strongest differentiator from fear-based competitor ads and avoids the negative-self-perception policy almost entirely (see Meta policy section above).
+  - Life-event trigger angle (life insurance): tie the product to a concrete recent life change (new baby, new home, recent marriage) rather than an abstract "protect your family" platitude.
 
 ========================================
 GEOGRAPHIC LICENSING ENFORCEMENT

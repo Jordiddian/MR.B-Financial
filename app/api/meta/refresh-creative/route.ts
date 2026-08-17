@@ -28,7 +28,13 @@ const supabase = createClient(
 // Output is a pending ad, same as any other generation — nothing goes live
 // without approval.
 
-const REFRESH_COOLDOWN_DAYS = 6
+// Was 6 — industry guidance (Insurance_FB_IG_Advertising_Strategy.docx, Aug
+// 2026) recommends refreshing winning creative every 2–3 weeks to stay ahead
+// of fatigue without resetting Meta's delivery optimization too often. This
+// route's own cron only runs weekly anyway, so 6 days didn't actually change
+// the real refresh cadence — it just meant every single weekly run refreshed
+// every eligible winner, which is more frequent than the recommended window.
+const REFRESH_COOLDOWN_DAYS = 14
 
 interface WinnerCampaign {
   id: string

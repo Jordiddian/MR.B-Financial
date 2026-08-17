@@ -10,10 +10,53 @@ export const CPL_TARGETS: Record<string, number> = {
   'Medicare': 40,
   'Dental': 25,
   'Vision': 25,
-  'Final Expenses': 35,
+  // Was 35 — industry benchmarks (Insurance_FB_IG_Advertising_Strategy.docx,
+  // Aug 2026) report disciplined final expense campaigns landing $15–$30;
+  // 35 was letting genuinely underperforming campaigns look on-target.
+  'Final Expenses': 30,
 }
 
 export const AD_TYPES = Object.keys(CPL_TARGETS)
+
+// Seasonal CPL windows — per the same benchmark doc, Medicare CPLs run
+// meaningfully higher during AEP (Oct 1–Dec 7) and Covered California/ACA
+// CPLs rise sharply during Open Enrollment (Nov 1–Jan 15), driven by
+// platform-wide competition, not a drop in campaign quality. Without this,
+// the optimizer would read a seasonally-normal CPL spike as underperformance
+// and cut budget right when the enrollment window makes spend most valuable.
+interface SeasonalWindow {
+  adType: string
+  startMonth: number // 1-12
+  startDay: number
+  endMonth: number
+  endDay: number
+  seasonalTarget: number
+}
+
+const SEASONAL_WINDOWS: SeasonalWindow[] = [
+  { adType: 'Medicare', startMonth: 10, startDay: 1, endMonth: 12, endDay: 7, seasonalTarget: 70 },
+  { adType: 'Covered California', startMonth: 11, startDay: 1, endMonth: 1, endDay: 15, seasonalTarget: 55 },
+]
+
+function isWithinWindow(date: Date, w: SeasonalWindow): boolean {
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  const asValue = (m: number, d: number) => m * 100 + d
+  const value = asValue(month, day)
+  const start = asValue(w.startMonth, w.startDay)
+  const end = asValue(w.endMonth, w.endDay)
+  // Windows that cross the calendar year boundary (e.g. Nov 1 – Jan 15)
+  // need an OR check instead of a simple start <= value <= end range.
+  return start <= end ? value >= start && value <= end : value >= start || value <= end
+}
+
+/** CPL target for this ad type, widened if `date` falls in a known seasonal window. */
+export function seasonalCplTarget(adType: string, date: Date = new Date()): number | null {
+  const base = CPL_TARGETS[adType] ?? null
+  const window = SEASONAL_WINDOWS.find(w => w.adType === adType && isWithinWindow(date, w))
+  if (!window) return base
+  return Math.max(base ?? 0, window.seasonalTarget)
+}
 
 // Auto-ads specifically: which product lines a paid campaign may be
 // auto-launched for. Medicare is excluded here because CMS rules (see the

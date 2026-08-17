@@ -2,12 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 import { createClient as createAuthClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import {
-  CPL_TARGETS,
   GUARDRAILS,
   hasReliableSignal,
   inBudgetCooldown,
   clampBudget,
   daysRunning,
+  seasonalCplTarget,
 } from '@/lib/optimizer/config'
 import { rollUpExperimentResults } from '@/lib/experiments/growthbook'
 import { isCronRequest } from '@/lib/auth/cron'
@@ -89,7 +89,9 @@ function evaluate(
   c: CampaignRow,
   liveBudgetCents: number
 ): Omit<Proposal, 'campaign_id' | 'meta_campaign_id' | 'ad_type'> | null {
-  const target = CPL_TARGETS[c.ad_type] ?? null
+  // Widened automatically during Medicare AEP / Covered CA Open Enrollment —
+  // see seasonalCplTarget's own comment for why a flat target is wrong here.
+  const target = seasonalCplTarget(c.ad_type)
   const cpl = c.avg_cpl == null ? null : Number(c.avg_cpl)
   const score = c.latest_score == null ? null : Number(c.latest_score)
   const leads = c.total_leads ?? 0
